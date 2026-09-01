@@ -25,8 +25,11 @@ C=4. **MTP-4 with 8 slots:** 76 tok/s aggregate at C=8. Single Spark with the 2-
 5. **Host prep is part of the recipe**: `vm.swappiness=0`, drop caches, worker-first launch, always tear
    down both ranks.
 6. **Japanese prose comes back with ~2 replacement characters per 10K chars** (a kanji becomes U+FFFD).
-   It is in the token stream, not the detokenizer, and neither speculation nor sampler pruning explains
-   it. Details and the attribution table in `docs/pitfalls.md` §9 / `docs/measurements.md` §4.
+   Cause: the tokenizer spells many Japanese kanji as a 2-byte fragment + a 1-byte continuation token and
+   the model sometimes skips the continuation — independent of speculation, KV dtype and sampler.
+   **Fix**: `patches/utf8_guard_lp.py`, a logits processor that forbids invalid continuations → 0 in 24,590
+   chars, quality unchanged; it only works without speculative decoding (vLLM limitation), i.e. at 14.6 tok/s.
+   Details in `docs/pitfalls.md` §9 / `docs/measurements.md` §4.
 
 ## Hardware and software
 
@@ -48,7 +51,7 @@ copies go through a read-only rsync daemon bound to the QSFP address.
 docker-compose.yml        symmetric service; rank-specific values are passed by scripts/start-*.sh;
                           the SM121 top-k patch is bind-mounted here
 cluster.env.example       every knob (image, checkpoint revision, fabric, vLLM flags). Copy to cluster.env
-patches/                  sparse_attn_indexer_kpool_sm121.py (tonyd2wild, Apache-2.0 header kept — see NOTICE)
+patches/                  sparse_attn_indexer_kpool_sm121.py (tonyd2wild, Apache-2.0 — see NOTICE), utf8_guard_lp.py (UTF-8 guard)
 scripts/                  download / verify / start / health / gate / stop / sweep / long-context loop
 bench/                    throughput_probe.py, longctx.py, garble_tokens.py, garble_ids.py (stdlib)
 docs/measurements.md      every number we measured, with conditions
@@ -117,6 +120,9 @@ OVERRIDES="MAX_MODEL_LEN=65536 MAX_NUM_SEQS=8 KV_CACHE_MEMORY_BYTES=4445787956 S
 
 # many users — MTP-4 with 8 slots at 262K
 OVERRIDES="MAX_NUM_SEQS=8" …
+
+# byte-exact Japanese — no speculation + UTF-8 guard
+OVERRIDES="MTP_NUM_TOKENS=0 LOGITS_PROCESSORS=utf8_guard_lp:Utf8GuardLogitsProcessor" …
 
 scripts/stop-both.sh      # ALWAYS: head down, then worker down
 ```

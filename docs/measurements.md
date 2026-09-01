@@ -41,6 +41,7 @@ Recommended configurations:
 | single user, long context | **S** = 262K / seqs 2 / DFlash2 k=7 / KV pin 3 GiB | 30.8 tok/s, 200K prompts with needle recall |
 | a few interactive users | **P** = 65K / seqs 8 / DFlash2 k=7 / KV pin 4.1 GiB | 31–32 tok/s single, 70 tok/s aggregate at C=4 |
 | many concurrent users | 262K / seqs 8 / MTP k=4 | 76 tok/s aggregate at C=8, 27 tok/s single |
+| Japanese prose that must be byte-exact | no speculation + `LOGITS_PROCESSORS=utf8_guard_lp:Utf8GuardLogitsProcessor` | 0 U+FFFD (vs ≈2 / 10K chars), 14.6 tok/s |
 
 ## 2. Bench on config P (same harness as the author's single-Spark 2-bit GGUF article)
 
@@ -98,9 +99,30 @@ Two simultaneous 200K prompts (400K tokens of context) complete; neither host fr
 | MTP k=4 + `top_k 40` | 13 | 27,475 | 4.7 |
 | no speculation | 2 | 11,840 | 1.7 |
 | no speculation + `min_p 0.05` | 9 / 2 | 11,787 / 14,635 | 7.6 / 1.4 |
-| no speculation + bf16 KV | see README (last run) | | |
+| no speculation + bf16 KV (`auto`) | 14 | 27,937 | 5.0 |
+| **no speculation + `patches/utf8_guard_lp.py`** | **0** | 24,590 | **0.0** |
 | 1× Spark 2-bit GGUF, llama.cpp (same probe) | 0 | 28,000+ | 0 |
 
 Token IDs returned with `return_token_ids` and decoded offline with the checkpoint's `tokenizer.json`
 (`bench/garble_ids.py`) reproduce the replacement character at the same position in 3/3 samples: the
-model emits an invalid byte-fallback sequence; the detokenizer is not at fault.
+model emits an invalid byte sequence; the detokenizer is not at fault. Neither speculation, the sampler
+(`top_k` / `min_p`) nor the KV dtype changes the rate. The `tokenizer.json` is byte-identical (md5) to
+`zai-org/GLM-5.3-Flash`.
+
+**Mechanism.** GLM-5.3's byte-level BPE has no single token for many Japanese shinjitai kanji: 測 is
+`e6b8` + `ac`, 範 is `e7af` + `84`, 陥 `e999` + `a5`, 継 `e7b6` + `99`, 拡 `e68b` + `a1`, 遅 `e981` + `85` …
+(a 2-byte fragment followed by a 1-byte continuation token; 1,095 vocab entries are not valid UTF-8 on
+their own). The failures are exactly these words — 現実 broke 11 times in 66 occurrences (現 is one token,
+実 is `e5ae9f`, but the sequence is emitted through the fragment path), 効果測定 5 times, 許容範囲, 陥る,
+桁, 継ぎ, 併用, 拡大, 毀損, 拠 — while 現場 (two whole tokens) never broke in 95 occurrences. The model
+emits the 2-byte fragment and then skips the 1-byte continuation, jumping to the next character (hence
+the duplicated 囲 in 範�囲囲). Which layer makes that continuation decision go wrong (NVFP4 marlin path,
+v11 kernels) is not isolated; on a single Spark with the 2-bit GGUF under llama.cpp the same probe is clean.
+
+**Mitigation.** `patches/utf8_guard_lp.py` is a vLLM v1 logits processor that masks, at every step, the
+tokens that would make the byte stream invalid (after a token ending mid-character only the matching
+continuation bytes are allowed; at a boundary, continuation-leading tokens are forbidden). Enable with
+`LOGITS_PROCESSORS=utf8_guard_lp:Utf8GuardLogitsProcessor`; vLLM rejects custom logits processors while
+speculative decoding is on, so this trades the drafter's speed for valid Japanese: **0 replacement characters in
+24,590 chars**, recall checks in the multi-turn probes all pass, Japanese ratio ≥ 0.945, and the target words
+(現実 ×15, 測定 ×14, 範囲 ×11, 継 ×4, 桁 ×2) are spelled correctly; decode runs at the no-speculation 14.6 tok/s.

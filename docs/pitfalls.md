@@ -87,7 +87,10 @@ vLLM rejects `min_p` (and `logit_bias`) while speculative decoding is on:
 About 2 per 10,000 characters of Japanese prose come back with one kanji replaced by U+FFFD
 (e.g. 検査範囲 → 検査�囲囲, 現実的 → �実的). Decoding the returned token IDs offline with the checkpoint's
 `tokenizer.json` reproduces it at the same position, so the model emitted an invalid byte-fallback
-sequence — it is not the detokenizer. It happens with MTP-4, DFlash2 and without speculation, and neither
-`top_k 40` nor `min_p 0.05` removes it. The same probe on a single Spark with the 2-bit GGUF under
-llama.cpp produced zero. See `docs/measurements.md` for the attribution table; the remaining suspects are
-the fp8 KV lane, the NVFP4 (marlin) path and the v11 kernels.
+sequence — it is not the detokenizer. It happens with MTP-4, DFlash2 and without speculation, with fp8 and bf16 KV, and neither `top_k 40`
+nor `min_p 0.05` removes it. The same probe on a single Spark with the 2-bit GGUF under llama.cpp produced
+zero. The mechanism is the tokenizer: many Japanese kanji are spelled as a 2-byte fragment token plus a
+1-byte continuation token (測 = `e6b8` + `ac`), and the model sometimes skips the continuation.
+`patches/utf8_guard_lp.py` (a logits processor, `LOGITS_PROCESSORS=utf8_guard_lp:Utf8GuardLogitsProcessor`)
+forbids the invalid continuations; it cannot be combined with speculative decoding in vLLM. Attribution
+table and measured effect in `docs/measurements.md` §4.

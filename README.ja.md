@@ -21,9 +21,11 @@ vLLM の TP=2 として動かすための config as code・実測値・落とし
 4. **FlashInfer 系 MoE backend を util 0.85 で無人運用しない**——`flashinfer_cutlass` で両ホストが凍結し、
    物理再起動になりました。backend は marlin です。
 5. **ホスト準備もレシピの一部**: `vm.swappiness=0`、drop_caches、worker → head の順、両 rank を必ず落とす。
-6. **日本語の散文で 1 万字あたり約 2 文字が置換文字（U+FFFD）になります。** トークン列の段階で壊れており
-   detokenizer のせいではなく、投機やサンプラーの刈り込みでも説明がつきません。`docs/pitfalls.md` §9 と
-   `docs/measurements.md` §4 に切り分け表があります。
+6. **日本語の散文で 1 万字あたり約 2 文字が置換文字（U+FFFD）になります。** 原因は tokenizer: 日本語の
+   新字体の多くが「2 バイト断片 + 1 バイト継続」の 2 トークンで綴られ、モデルが継続を飛ばすことがある
+   （投機・KV dtype・サンプラーに依らず発生）。**対策**は `patches/utf8_guard_lp.py`（不正な継続を遮る
+   logits processor）で、24,590 字でゼロ・品質そのまま。vLLM の制約で投機デコードとは併用できず 14.6 tok/s。
+   詳細は `docs/pitfalls.md` §9 と `docs/measurements.md` §4。
 
 ## 構成
 
@@ -42,7 +44,7 @@ Docker 29 + compose v5、nvidia-container-toolkit、tmux、rsync、python3（プ
 ```
 docker-compose.yml        対称な service。rank 固有の値は scripts/start-*.sh が渡す。SM121 top-k パッチをここで bind mount
 cluster.env.example       全 knob（image / checkpoint revision / fabric / vLLM フラグ）。cluster.env にコピーして使う
-patches/                  sparse_attn_indexer_kpool_sm121.py（tonyd2wild、Apache-2.0 ヘッダ保持 — NOTICE 参照）
+patches/                  sparse_attn_indexer_kpool_sm121.py（tonyd2wild、Apache-2.0 — NOTICE 参照）、utf8_guard_lp.py（UTF-8 ガード）
 scripts/                  取得 / 照合 / 起動 / health / ゲート / 停止 / スイープ / 段階長文
 bench/                    throughput_probe.py, longctx.py, garble_tokens.py, garble_ids.py（stdlib）
 docs/measurements.md      実測値と条件のすべて（英語）
@@ -110,6 +112,9 @@ OVERRIDES="MAX_MODEL_LEN=65536 MAX_NUM_SEQS=8 KV_CACHE_MEMORY_BYTES=4445787956 S
 
 # 多人数 — 262K のまま MTP-4 × 8 slots
 OVERRIDES="MAX_NUM_SEQS=8" …
+
+# 日本語をバイト単位で正確に — 投機なし + UTF-8 ガード
+OVERRIDES="MTP_NUM_TOKENS=0 LOGITS_PROCESSORS=utf8_guard_lp:Utf8GuardLogitsProcessor" …
 
 scripts/stop-both.sh      # 必ず head → worker の順で落とす
 ```
