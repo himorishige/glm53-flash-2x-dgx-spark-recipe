@@ -11,6 +11,29 @@ raw outputs of the scripts in this repository.
 needle recall at 200K, 15-minute boot. **Config P (a few users):** 31–32 tok/s single, 70 tok/s aggregate at
 C=4. **MTP-4 with 8 slots:** 76 tok/s aggregate at C=8. Single Spark with the 2-bit GGUF was 17.7 tok/s.
 
+## Just use this (as of 2026-09-01)
+
+**Default = config S.** It is what `cluster.env.example` launches with no overrides.
+
+| you want | run | measured |
+| --- | --- | --- |
+| **one user, long documents (default)** | `cluster.env` as shipped: 262K ctx / 2 slots / DFlash2 drafter k=7 / fp8 KV / marlin | 30.8 tok/s single, prefill ≈1.4K tok/s flat to 200K, needle at 200K ✅ |
+| several people at once | `OVERRIDES="SPEC_METHOD=mtp MTP_NUM_TOKENS=4 KV_CACHE_MEMORY_BYTES=9663676416 MAX_NUM_SEQS=8"` | 27 tok/s single, 76 tok/s aggregate at C=8 |
+| Japanese text that must be byte-exact | `OVERRIDES="MTP_NUM_TOKENS=0 LOGITS_PROCESSORS=utf8_guard_lp:Utf8GuardLogitsProcessor"` | 0 broken kanji (default: ≈2 per 10K chars), 14.6 tok/s |
+
+```bash
+cp cluster.env.example cluster.env      # set HEAD_HOST / WORKER_HOST / QSFP IPs / NIC names for your pair
+scripts/sync-files.sh
+scripts/start-worker.sh && sleep 25 && scripts/start-head.sh && scripts/health.sh   # ≈15 min to READY
+# … use http://127.0.0.1:8888/v1 on the head (served model name glm-5.3-flash-nvfp4) …
+scripts/stop-both.sh                    # always both ranks
+```
+
+Do not change: `--block-size 2304`, `--language-model-only`, `--moe-backend marlin`, `--gpu-memory-utilization 0.85`,
+`--tool-call-parser glm47`, `--reasoning-parser deepseek_r1`, the v11 image, the top-k patch mount. Do not try
+`flashinfer_cutlass` or utilisation 0.90 unattended (both hosts froze). Note: the DFlash2 drafter is CC-BY-NC-ND —
+for commercial use take the MTP-4 row (26–27 tok/s) instead.
+
 ## TL;DR — what actually matters
 
 1. **The stock day-0 image does not work on GB10.** `vllm/vllm-openai:glm53-flash-arm64-cu130` dies in

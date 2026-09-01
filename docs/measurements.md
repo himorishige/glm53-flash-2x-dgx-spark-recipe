@@ -34,7 +34,7 @@ Reading: speculation is +76–91 % (14.6 → 25–28); the DFlash2 drafter adds 
 around C=4 (70.8) and drops at C=8 (58.9) because the drafter competes for compute; KV dtype does not move
 single-stream speed (fp8 wins at C=2); context length does not move speed at all.
 
-Recommended configurations:
+Recommended configurations (S is the default in `cluster.env.example`):
 
 | use | config | why |
 | --- | --- | --- |

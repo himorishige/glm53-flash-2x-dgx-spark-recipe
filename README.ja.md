@@ -10,6 +10,28 @@ vLLM の TP=2 として動かすための config as code・実測値・落とし
 起動 15 分。**構成 P（数人）**: 単発 31〜32 tok/s、C=4 で合計 70 tok/s。**MTP-4 × 8 slots**: C=8 で合計 76 tok/s。
 1 台の 2-bit GGUF は 17.7 tok/s でした。
 
+## まずはこれで OK（2026-09-01 時点）
+
+**既定 = 構成 S。** `cluster.env.example` をそのまま使えば、上書きなしでこの構成が上がります。
+
+| やりたいこと | 起動 | 実測 |
+| --- | --- | --- |
+| **1 人で使う・長い文書を読ませる（既定）** | `cluster.env` のまま: 262K 文脈 / 2 slots / DFlash2 drafter k=7 / fp8 KV / marlin | 単発 30.8 tok/s、prefill ≈1.4K tok/s が 200K まで平坦、200K の合言葉 ✅ |
+| 何人かで同時に使う | `OVERRIDES="SPEC_METHOD=mtp MTP_NUM_TOKENS=4 KV_CACHE_MEMORY_BYTES=9663676416 MAX_NUM_SEQS=8"` | 単発 27 tok/s、C=8 合計 76 tok/s |
+| 日本語をバイト単位で正確に出したい | `OVERRIDES="MTP_NUM_TOKENS=0 LOGITS_PROCESSORS=utf8_guard_lp:Utf8GuardLogitsProcessor"` | 漢字の破損ゼロ（既定は ≈2 個 / 1 万字）、14.6 tok/s |
+
+```bash
+cp cluster.env.example cluster.env      # HEAD_HOST / WORKER_HOST / QSFP の IP / NIC 名を自分の 2 台に合わせる
+scripts/sync-files.sh
+scripts/start-worker.sh && sleep 25 && scripts/start-head.sh && scripts/health.sh   # READY まで約 15 分
+# … head の http://127.0.0.1:8888/v1 を使う（served model name は glm-5.3-flash-nvfp4）…
+scripts/stop-both.sh                    # 必ず両 rank
+```
+
+変えないもの: `--block-size 2304`、`--language-model-only`、`--moe-backend marlin`、`--gpu-memory-utilization 0.85`、
+`--tool-call-parser glm47`、`--reasoning-parser deepseek_r1`、v11 image、top-k パッチの mount。`flashinfer_cutlass` と
+util 0.90 は無人で試さない（両ホストが凍結）。注意: DFlash2 drafter は CC-BY-NC-ND なので、商用は MTP-4 の行（26〜27 tok/s）を使う。
+
 ## 要点
 
 1. **day-0 の stock image は GB10 で動きません。** `vllm/vllm-openai:glm53-flash-arm64-cu130` は KV dtype に
