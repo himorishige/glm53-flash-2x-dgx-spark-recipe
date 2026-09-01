@@ -1,0 +1,15 @@
+# One factor at a time from the day-1 config in cluster.env (measured 2026-09-01, see docs/measurements.md).
+# name | OVERRIDES (K=V, space separated) | slots | concurrency | note
+A-base      |                                                          | 2 | 1,2     | day-1: marlin / 262K / seqs 2 / MTP-4 / eager / fp8_e4m3 KV / batched 4096 / util 0.85 / KV 9 GiB pin
+mtp0        | MTP_NUM_TOKENS=0                                         | 2 | 1,2     | no speculation
+mtp3        | MTP_NUM_TOKENS=3                                         | 2 | 1,2     |
+mtp5        | MTP_NUM_TOKENS=5                                         | 2 | 1,2     |
+dflash7     | SPEC_METHOD=dflash SPEC_MODEL=/models/GLM-5.3-Flash-DFlash2 MTP_NUM_TOKENS=7 KV_CACHE_MEMORY_BYTES=3221225472 | 2 | 1,2 | DFlash2 drafter (fastest single stream)
+s6          | MAX_NUM_SEQS=6                                           | 6 | 1,2,4,6 | 262K with 6 slots
+s8          | MAX_NUM_SEQS=8                                           | 8 | 1,2,4,8 | 262K with 8 slots (best aggregate)
+kvbf16      | KV_CACHE_DTYPE=auto                                      | 2 | 1,2     | bf16 KV
+ctx65k-s8   | MAX_MODEL_LEN=65536 MAX_NUM_SEQS=8 KV_CACHE_MEMORY_BYTES= | 8 | 1,2,4,8 | shorter context, util-sized KV
+P-65k-s8-dflash7 | MAX_MODEL_LEN=65536 MAX_NUM_SEQS=8 KV_CACHE_MEMORY_BYTES=4445787956 SPEC_METHOD=dflash SPEC_MODEL=/models/GLM-5.3-Flash-DFlash2 MTP_NUM_TOKENS=7 | 8 | 1,2,4,8 | interactive multi-user
+# --- do NOT run these unattended: they froze both hosts / are the same failure class ---
+# cutlass   | MOE_BACKEND=flashinfer_cutlass GPU_MEMORY_UTILIZATION=0.78 | 2 | 1,2 | froze BOTH hosts at util 0.85 (Libertai reports a 0.79-0.80 floor with cutlass)
+# util090   | GPU_MEMORY_UTILIZATION=0.90                              | 2 | 1,2     | marlin already sits at 117/121 GiB at 0.85

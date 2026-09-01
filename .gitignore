@@ -1,0 +1,6 @@
+logs/
+results/tuning/*.log
+results/*.log
+results/**/*.json
+cluster.env
+__pycache__/
