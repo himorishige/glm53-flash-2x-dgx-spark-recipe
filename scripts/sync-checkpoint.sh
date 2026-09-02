@@ -4,7 +4,9 @@
 # unattended in tmux. SRC=node2:models/GLM-5.3-Flash-NVFP4/ switches back to ssh (needs the Mac's
 # agent forwarded into this session).
 set -euo pipefail
-SRC="${SRC:-rsync://192.168.200.14:8873/glm53/}"
+# shellcheck disable=SC1091
+source ~/glm53-cluster/cluster.env   # HEAD_IP = the rsync daemon's address
+SRC="${SRC:-rsync://${HEAD_IP}:8873/glm53/}"
 mkdir -p ~/models/GLM-5.3-Flash-NVFP4 ~/glm53-cluster/logs
 echo "SYNC_START $(date -Is) src=$SRC" >> ~/glm53-cluster/logs/sync-checkpoint.log
 rsync -aH --partial --inplace --info=progress2 --exclude '.cache/' \

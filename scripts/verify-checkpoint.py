@@ -6,7 +6,7 @@ against ``lfs.oid`` from the Hub tree API for a pinned revision. Writes SHA256SU
 (usable with ``sha256sum -c`` on the other node) and verify.json into --out.
 
 Usage:
-  verify-checkpoint.py ~/models/GLM-5.3-Flash-NVFP4 --repo LibertAIDAI/GLM-5.3-Flash-NVFP4 \
+  verify-checkpoint.py ~/models/GLM-5.3-Flash-NVFP4 --repo RedHatAI/GLM-5.3-Flash-NVFP4 \
       --revision <sha> [--sha256] [--out ~/glm53-cluster/results]
 """
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mac: first smoke (config A from cluster.env, or OVERRIDES=/EXTRA_COMPOSE= for another config).
+# Mac: first smoke (config S from cluster.env, or OVERRIDES=/EXTRA_COMPOSE= for another config).
 # stop-both → drop caches → start-worker → 25 s → start-head → health → full gate (G0-G3, G2 default+low) →
 # results/smoke-<date>.md. On failure: logs.sh → stop-both.sh. Markers: SMOKE_PASS / SMOKE_FAIL.
 #   nohup scripts/smoke.sh > results/smoke-run.log 2>&1 &

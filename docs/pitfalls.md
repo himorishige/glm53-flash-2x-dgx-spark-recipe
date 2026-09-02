@@ -19,7 +19,7 @@ layout, which asserts `pe_dim == 64`. This is the fault Libertai documents on th
 "it works on 2× Spark" report we could find runs a patched image (tonyd2wild v8/v9/v11) or a plugin.
 
 **Fix**: use `ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v11-dflash2` (this recipe) and keep the SM121 top-k
-patch mounted (§4). Three failed smokes are in the git history of this recipe's origin.
+patch mounted (§4). Three smokes failed this way on 2026-09-01 before the switch.
 
 ## 2. compose `--env-file`: an inline comment after an EMPTY value becomes the value
 
@@ -82,15 +82,28 @@ vLLM rejects `min_p` (and `logit_bias`) while speculative decoding is on:
   PATH. Wrap with `bash -lc`.
 - `/v1/models` answers 200 even when the engine is dead; probe with a real completion.
 
-## 9. Replacement characters (U+FFFD) in Japanese output
+## 9. Replacement characters (U+FFFD) in Japanese output — a checkpoint defect, fixed by switching
 
-About 2 per 10,000 characters of Japanese prose come back with one kanji replaced by U+FFFD
-(e.g. 検査範囲 → 検査�囲囲, 現実的 → �実的). Decoding the returned token IDs offline with the checkpoint's
-`tokenizer.json` reproduces it at the same position, so the model emitted an invalid byte-fallback
-sequence — it is not the detokenizer. It happens with MTP-4, DFlash2 and without speculation, with fp8 and bf16 KV, and neither `top_k 40`
-nor `min_p 0.05` removes it. The same probe on a single Spark with the 2-bit GGUF under llama.cpp produced
-zero. The mechanism is the tokenizer: many Japanese kanji are spelled as a 2-byte fragment token plus a
-1-byte continuation token (測 = `e6b8` + `ac`), and the model sometimes skips the continuation.
-`patches/utf8_guard_lp.py` (a logits processor, `LOGITS_PROCESSORS=utf8_guard_lp:Utf8GuardLogitsProcessor`)
-forbids the invalid continuations; it cannot be combined with speculative decoding in vLLM. Attribution
-table and measured effect in `docs/measurements.md` §4.
+With the initial checkpoint (`LibertAIDAI/GLM-5.3-Flash-NVFP4`, ModelOpt weight-only) about 2 per 10,000
+characters of Japanese prose came back with one kanji replaced by U+FFFD (e.g. 検査範囲 → 検査�囲囲).
+Decoding the returned token IDs offline with the checkpoint's `tokenizer.json` reproduces it at the same
+position, so the model emitted the invalid byte sequence — not the detokenizer. It happened with MTP-4,
+DFlash2 and without speculation, with fp8 and bf16 KV, and neither `top_k 40` nor `min_p 0.05` removed it.
+The mechanism is the tokenizer: many Japanese kanji are spelled as a 2-byte fragment token plus a 1-byte
+continuation token (測 = `e6b8` + `ac`; 1,095 of the 154,820 vocab entries are not valid UTF-8 on their own),
+and the model sometimes skips the continuation.
+
+**Fix: use `RedHatAI/GLM-5.3-Flash-NVFP4` — this recipe's default since 2026-09-02.** Same model, same
+tokenizer, drop-in path swap with identical flags; the same Japanese probes measured **0 U+FFFD in ~78K
+characters** across no-speculation / DFlash2 / MTP-4 (tonyd2wild reports the same 4/9/8 → 0/0/0 flip with a
+Korean probe). What exactly is wrong inside the ModelOpt build is not isolated. `patches/utf8_guard_lp.py`
+(a logits processor; vLLM refuses it while speculative decoding is on) is kept only for users who stay on
+the LibertAI checkpoint. Attribution tables and the re-measurement are in `docs/measurements.md` §0 and §4.
+
+## 10. Flags that fail silently
+
+- `--block-size 2304` is the page size the fp8 paged MQA kernels expect. Leave it out and the server boots
+  and answers — with corrupted output and no error.
+- `--language-model-only` skips the multimodal front-end. Without it the model loads 15.7 GiB more, which
+  is the margin between fitting and not fitting at util 0.85.
+- `--tool-call-parser glm47`. `glm` is accepted and silently returns no `tool_calls`; gate G3 exists for this.

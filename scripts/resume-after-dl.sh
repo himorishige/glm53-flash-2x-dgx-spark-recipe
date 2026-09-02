@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Mac: B-6 → B-7 after the node2 download finished. Idempotent; every step is skipped when its
+# Mac: after the node2 download finished — sync to node1 over the QSFP, sha256-verify both nodes, host prep.
+# Idempotent; every step is skipped when its
 # evidence already exists. Run under nohup; markers: SYNC_OK / VERIFY_OK / CHECK_OK / SMOKE_READY / RESUME_FAIL.
 #   nohup scripts/resume-after-dl.sh > results/resume-after-dl.log 2>&1 &
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck disable=SC1091
 source "$DIR/cluster.env"
-EXPECTED=194701812547
+EXPECTED=197881157135   # HF blob total of rev 36c184c6 (21 files, 184.3 GiB); du -sb may add a few KB of directory entries
 n1() { ssh -o BatchMode=yes "$WORKER_HOST" "$@"; }
 n2() { ssh -o BatchMode=yes "$HEAD_HOST" "$@"; }
 fail() { echo "RESUME_FAIL $*"; exit 1; }
@@ -34,18 +35,18 @@ else
   [ "${rc:-1}" = "0" ] && [ "$b1" = "$EXPECTED" ] && echo "SYNC_OK" || fail "sync (rc=${rc:-none} bytes=$b1)"
 fi
 
-# 2. sha256 on node2 (15-25 min) -> results/SHA256SUMS + verify.json
-if n2 '[ -s ~/glm53-cluster/results/SHA256SUMS ] && python3 -c "import json;d=json.load(open(\"/home/morishige/glm53-cluster/results/verify.json\"));exit(0 if d[\"sha256_checked\"] and not d[\"problems\"] else 1)" 2>/dev/null'; then
+# 2. sha256 on node2 (≈4 min) -> results/SHA256SUMS + verify.json
+if n2 '[ -s ~/glm53-cluster/results/SHA256SUMS ] && python3 -c "import json,os;d=json.load(open(os.path.expanduser(\"~/glm53-cluster/results/verify.json\")));exit(0 if d[\"sha256_checked\"] and not d[\"problems\"] else 1)" 2>/dev/null'; then
   echo "VERIFY_OK (already)"
 else
-  n2 'tmux has-session -t glm-verify 2>/dev/null || tmux new -d -s glm-verify "python3 ~/glm53-cluster/scripts/verify-checkpoint.py ~/models/GLM-5.3-Flash-NVFP4 --repo LibertAIDAI/GLM-5.3-Flash-NVFP4 --revision caca4e6a4ebbd66f159d3d2fc256683fd6e27177 --sha256 --out ~/glm53-cluster/results > ~/glm53-cluster/logs/verify.log 2>&1"'
+  n2 'tmux has-session -t glm-verify 2>/dev/null || tmux new -d -s glm-verify "python3 ~/glm53-cluster/scripts/verify-checkpoint.py ~/models/GLM-5.3-Flash-NVFP4 --repo RedHatAI/GLM-5.3-Flash-NVFP4 --revision 36c184c6cda000a481711306df5adde42f63321a --sha256 --out ~/glm53-cluster/results > ~/glm53-cluster/logs/verify.log 2>&1"'
   t0=$(date +%s)
   for _ in $(seq 1 120); do   # up to 1 h
     if n2 '[ -f ~/glm53-cluster/results/verify.json ]'; then break; fi
     sleep 30
   done
   n2 'cat ~/glm53-cluster/results/verify.json' | tee "$DIR/results/verify-node2.json"
-  n2 'python3 -c "import json; d=json.load(open(\"/home/morishige/glm53-cluster/results/verify.json\")); raise SystemExit(0 if d[\"sha256_checked\"] and not d[\"problems\"] else 1)"' \
+  n2 'python3 -c "import json, os; d=json.load(open(os.path.expanduser(\"~/glm53-cluster/results/verify.json\"))); raise SystemExit(0 if d[\"sha256_checked\"] and not d[\"problems\"] else 1)"' \
     && echo "VERIFY_OK in $(( $(date +%s) - t0 )) s" || fail "verify (see results/verify-node2.json)"
 fi
 
@@ -65,5 +66,5 @@ n2 '~/glm53-cluster/scripts/rsyncd-node2.sh stop' >/dev/null 2>&1
 for h in "$WORKER_HOST" "$HEAD_HOST"; do
   ssh -o BatchMode=yes "$h" "sudo -n sysctl -w vm.swappiness=0 >/dev/null && sudo -n sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches' && echo \"\$(hostname) swappiness=\$(sysctl -n vm.swappiness) caches dropped\"" || echo "[resume] WARNING host prep failed on $h"
 done
-for h in "$WORKER_HOST" "$HEAD_HOST"; do ssh -o BatchMode=yes "$h" "hostname; free -g | sed -n 2p; ss -ltn | grep -E ':(8888|25000) ' || echo ports-free; ollama ps 2>/dev/null | tail -n +2 | grep -q . && echo OLLAMA_MODEL_LOADED || echo ollama-idle"; done
+for h in "$WORKER_HOST" "$HEAD_HOST"; do ssh -o BatchMode=yes "$h" "hostname; free -g | sed -n 2p; ss -ltn | grep -E ':(${PORT}|${MASTER_PORT}) ' || echo ports-free; ollama ps 2>/dev/null | tail -n +2 | grep -q . && echo OLLAMA_MODEL_LOADED || echo ollama-idle"; done
 echo "SMOKE_READY $(date +%FT%T)"

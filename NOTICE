@@ -12,6 +12,9 @@ patches/sparse_attn_indexer_kpool_sm121.py
 Everything else in this repository is MIT (see LICENSE).
 
 Model and image licences (not redistributed here, fetched by the scripts):
-  LibertAIDAI/GLM-5.3-Flash-NVFP4        MIT (quantized from zai-org/GLM-5.3-Flash, MIT)
+  RedHatAI/GLM-5.3-Flash-NVFP4           no license declared on the HF repo as of 2026-09-02
+                                          (quantized from zai-org/GLM-5.3-Flash, MIT) — default since 2026-09-02
+  LibertAIDAI/GLM-5.3-Flash-NVFP4        MIT (quantized from zai-org/GLM-5.3-Flash, MIT) — the initial default;
+                                          breaks CJK multi-byte characters, see docs/pitfalls.md #9
   incoai/GLM-5.3-Flash-DFlash2 (drafter)  CC-BY-NC-ND — non-commercial, check before production use
   ghcr.io/tonyd2wild/vllm-glm53-flash     built on vllm/vllm-openai (Apache-2.0)

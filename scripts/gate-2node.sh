@@ -7,16 +7,19 @@
 # G2: one math prompt — non-empty content, no degenerate repetition ("locklock…"),
 #     reasoning separated from content, tok/s recorded (default effort and effort=low)
 # G3: one tool call (get_weather) — parser glm47 must yield tool_calls
-# (G4 needle 32K→200K is Phase 1, not run here.)
+# (G4 needle 32K→200K is covered by scripts/longctx-run.sh, not run here.)
 set -uo pipefail
-BASE="${BASE:-http://127.0.0.1:8888}"
-MODEL_NAME="${MODEL_NAME:-glm-5.3-flash-nvfp4}"
+# shellcheck disable=SC1091
+[ -f ~/glm53-cluster/cluster.env ] && source ~/glm53-cluster/cluster.env   # PORT / SERVED_MODEL_NAME / NCCL_IB_HCA
+BASE="${BASE:-http://127.0.0.1:${PORT:-8888}}"
+MODEL_NAME="${MODEL_NAME:-${SERVED_MODEL_NAME:-glm-5.3-flash-nvfp4}}"
 CONTAINER="${CONTAINER:-glm53-vllm-glm53-1}"
+HCA="${NCCL_IB_HCA:-rocep1s0f1}"   # G0 counts the NIC line for information only
 FAIL=0
 
 echo "=== G0: logs ==="
 docker logs --tail 3000 "$CONTAINER" 2>&1 > /tmp/gate-head.log
-for pat in 'Using \[0\]rocep1s0f1' 'Unable to find address' 'NCCL WARN' 'Traceback'; do
+for pat in "Using \[0\]$HCA" 'Unable to find address' 'NCCL WARN' 'Traceback'; do
   n=$(grep -c -E "$pat" /tmp/gate-head.log || true); echo "  head log: '$pat' x$n"
 done
 if grep -q -E 'Unable to find address' /tmp/gate-head.log; then echo "G0 FAIL: address resolution error"; FAIL=1; else echo "G0 PASS (rendezvous/NIC lines above are informational)"; fi

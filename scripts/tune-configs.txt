@@ -1,4 +1,5 @@
-# One factor at a time from the day-1 config in cluster.env (measured 2026-09-01, see docs/measurements.md).
+# One factor at a time from the day-1 config A (row A-base; cluster.env.example defaults are config S).
+# Measured 2026-09-01, see docs/measurements.md.
 # name | OVERRIDES (K=V, space separated) | slots | concurrency | note
 A-base      | SPEC_METHOD=mtp MTP_NUM_TOKENS=4 KV_CACHE_MEMORY_BYTES=9663676416 | 2 | 1,2 | day-1 (MTP-4) baseline: marlin / 262K / seqs 2 / eager / fp8_e4m3 KV / batched 4096 / util 0.85 / KV 9 GiB pin
 mtp0        | MTP_NUM_TOKENS=0                                         | 2 | 1,2     | no speculation

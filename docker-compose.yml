@@ -1,10 +1,10 @@
 # GLM-5.3-Flash NVFP4 on 2x DGX Spark (GB10) with vLLM TP=2.
 # Symmetric service: rank-specific values (NODE_RANK / HEADLESS / VLLM_HOST_IP)
 # are passed by scripts/start-head.sh and scripts/start-worker.sh, everything
-# else comes from cluster.env (--env-file). Derived from
-# ../dgx-spark-2node-v4flash-dspark-vllm/recipe-tonyd2wild/docker-compose.dspark.yml
-# with: GLM image/flags, UCX_NET_DEVICES added, VLLM_HOST_IP passed in (no bash
-# branch), autotune cache persisted, worker started from the Mac (not via node2).
+# else comes from cluster.env (--env-file). Derived from tonyd2wild's 2-node DGX Spark compose for
+# DeepSeek V4 Flash (docker-compose.dspark.yml) with: GLM image/flags, UCX_NET_DEVICES added,
+# VLLM_HOST_IP passed in (no bash branch), autotune cache persisted, worker started from the Mac
+# (not via the head).
 # Tuning (2026-08-31): MTP_NUM_TOKENS=0 / ENFORCE_EAGER=0 / KV_CACHE_MEMORY_BYTES= drop the
 # corresponding flag; every knob can be overridden per launch via OVERRIDES="K=V ..." in
 # scripts/start-*.sh (shell env wins over --env-file in compose interpolation).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mac: wait for the head's OpenAI API (up to 90 min: cold boot is 14-21 min, FlashInfer autotune
+# Mac: wait for the head's OpenAI API (up to 90 min: cold boot is 14–17 min, FlashInfer autotune
 # on the first run can be longer), then send one minimal chat. Tails head-side errors while waiting.
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"

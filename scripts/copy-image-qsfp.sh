@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # node1: copy the image from node2 over the QSFP link (no second WAN pull).
-# Uses node1's ssh alias `node2` (192.168.200.14), authenticated by the Mac's forwarded agent,
+# Uses node1's ssh alias `node2` (its QSFP address), authenticated by the Mac's forwarded agent,
 # so start it from an agent-forwarding session (tmux keeps it running afterwards).
 set -euo pipefail
 # shellcheck disable=SC1091
