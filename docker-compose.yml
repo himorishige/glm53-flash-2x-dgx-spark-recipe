@@ -67,6 +67,8 @@ services:
       KV_CACHE_MEMORY_BYTES: "${KV_CACHE_MEMORY_BYTES:-}"
       FLASHINFER_AUTOTUNE: "${FLASHINFER_AUTOTUNE:-1}"  # 0 = --kernel-config autotune/cutedsl warmup off (Ama5u)
       LOGITS_PROCESSORS: "${LOGITS_PROCESSORS:-}"       # e.g. utf8_guard_lp:Utf8GuardLogitsProcessor (rejected while speculative decoding is on)
+      LANGUAGE_MODEL_ONLY: "${LANGUAGE_MODEL_ONLY:-1}"   # 1 = --language-model-only (text only, default); 0 = load the 1.05 GiB vision tower and append VISION_ARGS
+      VISION_ARGS: "${VISION_ARGS:-}"                   # extra flags for LANGUAGE_MODEL_ONLY=0 (JSON values without spaces; see cluster.env.example)
       PYTHONPATH: "/opt/glm53"
       MASTER_ADDR: "${MASTER_ADDR}"
       MASTER_PORT: "${MASTER_PORT:-25000}"
@@ -81,7 +83,8 @@ services:
         KVB=""; if [ -n "$${KV_CACHE_MEMORY_BYTES:-}" ]; then KVB="--kv-cache-memory-bytes $${KV_CACHE_MEMORY_BYTES}"; fi;
         KC=""; if [ "$${FLASHINFER_AUTOTUNE:-1}" = "0" ]; then KC="--kernel-config {\"enable_cutedsl_warmup\":false,\"enable_flashinfer_autotune\":false}"; fi;
         LP=""; if [ -n "$${LOGITS_PROCESSORS:-}" ]; then LP="--logits-processors $${LOGITS_PROCESSORS}"; fi;
-        echo "[glm53] rank=$${NODE_RANK} spec='$$SPEC' eager='$$EAGER' kvb='$$KVB' kc='$$KC'";
+        MM="--language-model-only"; if [ "$${LANGUAGE_MODEL_ONLY:-1}" = "0" ]; then MM="$${VISION_ARGS:-}"; fi;
+        echo "[glm53] rank=$${NODE_RANK} spec='$$SPEC' eager='$$EAGER' kvb='$$KVB' kc='$$KC' mm='$$MM'";
         exec vllm serve ${MODEL_DIR}
         --served-model-name ${SERVED_MODEL_NAME}
         --host ${VLLM_HOST:-127.0.0.1}
@@ -93,7 +96,7 @@ services:
         --master-addr ${MASTER_ADDR}
         --master-port ${MASTER_PORT:-25000}
         ${HEADLESS:+--headless}
-        --language-model-only
+        $$MM
         --kv-cache-dtype ${KV_CACHE_DTYPE:-fp8}
         --block-size ${BLOCK_SIZE}
         $$KVB

@@ -218,3 +218,18 @@ speculative decoding is on, so this trades the drafter's speed for valid Japanes
 (現実 ×15, 測定 ×14, 範囲 ×11, 継 ×4, 桁 ×2) are spelled correctly; decode runs at the no-speculation 14.6 tok/s,
 and the 10-turn multi-turn probe takes 478.6 s instead of 353.8 s with DFlash2. Use the guard where a missing
 character is unacceptable (contracts, procedures); keep speculation for chat and code.
+
+## 5. Images (2026-09-02)
+
+8-slot MTP k=4 profile with `LANGUAGE_MODEL_ONLY=0 MAX_MODEL_LEN=131072` and the default `VISION_ARGS`
+(4 images per prompt, 2,048 tokens per image). Boot 621 s. Vision tower 1.05 GiB BF16 per rank
+(`model.visual.*`, 347 tensors, unquantized); ViT attention FLASH_ATTN (auto); encoder cache budget 32,242
+tokens; KV pool 3.31 GiB = 322,218 tokens = 2.46 full-131K streams (text-only 262K × 8 was 4.29 GiB).
+Three probes from the author's bench kit, effort=max, vendor sampling (temperature 1.0 / top_p 0.95):
+
+| probe | 2× Spark, this recipe | 1× Spark, 2-bit GGUF + mmproj (author's article) |
+| --- | --- | --- |
+| bar chart, 4 labelled values | 4/4, 2.5 s | 4/4, 7.8 s |
+| Japanese OCR (CER after NFKC) | 0.0, 4.4 s | 0.0, 13.5 s |
+| PPE enumeration + hallucination watch | fail, 39.7 s (missed the vest; its explicit denials of absent items were scored as hallucinations by the grader) | fail, 36.6 s (named absent items) |
+| total | 2/3 | 2/3 |

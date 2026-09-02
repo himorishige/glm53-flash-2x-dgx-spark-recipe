@@ -104,6 +104,8 @@ the LibertAI checkpoint. Attribution tables and the re-measurement are in `docs/
 
 - `--block-size 2304` is the page size the fp8 paged MQA kernels expect. Leave it out and the server boots
   and answers — with corrupted output and no error.
-- `--language-model-only` skips the multimodal front-end. Without it the model loads 15.7 GiB more, which
-  is the margin between fitting and not fitting at util 0.85.
+- `--language-model-only` skips the multimodal front-end. The tower itself is only 1.05 GiB; the 15.7 GiB
+  reported around this image is warmup profiling with the unbounded image budget (8,000 tokens per image).
+  Bounded (`VISION_ARGS` in `cluster.env.example`) it costs about 1 GiB of KV pool and images work — README
+  "Images", `docs/measurements.md` §5.
 - `--tool-call-parser glm47`. `glm` is accepted and silently returns no `tool_calls`; gate G3 exists for this.

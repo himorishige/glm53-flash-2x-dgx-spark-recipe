@@ -32,7 +32,7 @@ scripts/stop-both.sh                    # 必ず両 rank
 
 固定値（`cluster.env.example` に入っている。触らない）: image `ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v11-dflash2`、
 SM121 top-k パッチの mount（`docker-compose.yml`）、`--block-size 2304`（fp8 の paged MQA が要求する page サイズ。外すとエラーなしに出力が壊れる）、
-`--language-model-only`（マルチモーダルの front-end を読まない。無いと 15.7 GiB 余計に食う）、`--moe-backend marlin`、
+`--language-model-only`（既定はテキストのみ。画像は knob 1 つで有効化できる。[画像](#画像) を参照。vision tower 自体は 1.05 GiB）、`--moe-backend marlin`、
 `--gpu-memory-utilization 0.85`、`--kv-cache-dtype fp8_e4m3`、`--enforce-eager`、`--tool-call-parser glm47`（`glm` だと tool call が黙って消える）、
 `--reasoning-parser deepseek_r1`。文脈長は速度に効かない（262K と 65K で同じ tok/s）ので、削る理由はありません。
 KV プールは pin せず profiler に任せます（この checkpoint で 7.48 GiB = 1,151,844 トークン = 262K 満杯 4.4 本）。
@@ -124,6 +124,26 @@ vllm serve /models/GLM-5.3-Flash-NVFP4 --served-model-name glm-5.3-flash-nvfp4 -
 ```
 
 rank 1 は `--headless` が付きます。NCCL / UCX / OMPI のインターフェース指定は `docker-compose.yml`。
+
+## 画像
+
+GLM-5.3-Flash は vision tower を持ち、RedHat 版 checkpoint もそれを残しています（1 ランクあたり 1.05 GiB の BF16、量子化対象外。
+`chat_template.jinja` は `<|begin_of_image|><|image|><|end_of_image|>` を出す）。既定がテキストのみなのは、ここにある数値がすべて
+その条件で測ったものだからです。画像を受け付けるには次のとおり。
+
+```bash
+OV="LANGUAGE_MODEL_ONLY=0 MAX_MODEL_LEN=131072"
+OVERRIDES="$OV" scripts/start-worker.sh && sleep 25 && OVERRIDES="$OV" scripts/start-head.sh && scripts/health.sh
+```
+
+`LANGUAGE_MODEL_ONLY=0` で `--language-model-only` が外れ、`cluster.env` の `VISION_ARGS`
+（`--limit-mm-per-prompt {"image":4} --mm-processor-kwargs {"max_image_tokens":2048}`: 1 プロンプト 4 枚まで、1 枚約 1.6 MP、
+超えると processor が縮小）が付きます。この image で語られる「15.7 GiB」は tower の重みではなく、既定の無制限（1 枚 8,000 トークン）で
+warmup が画像プロファイルを取ったときの値です。このように上限を付ければ、マルチモーダルのプロファイルが KV プールから削るのは約 1 GiB。
+2026-09-02 の実測（8 スロット MTP k=4）: 起動 621 秒、131K で KV プール 3.31 GiB（262K の最小要件は 2.23 GiB なので 262K も入る）、
+ViT の attention は FLASH_ATTN が自動選択、著者の bench kit の vision 3 プローブ（棒グラフの数値、日本語 OCR、保護具の列挙 + 幻覚監視）は
+chart 4/4、OCR CER 0.0、PPE 不合格で、1 台 GGUF と同じ 2/3。1 枚あたり 2.5 秒 / 4.4 秒（1 台は 7.8 / 13.5）。画像は OpenAI の
+`image_url`（data URL か http）で送ります。動画は vLLM 既定の 1 本が有効ですが未計測。詳細は `docs/measurements.md` §5。
 
 ## ディレクトリ
 
