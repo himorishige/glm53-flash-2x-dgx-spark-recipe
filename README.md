@@ -34,8 +34,8 @@ scripts/stop-both.sh                    # always both ranks
 
 Fixed values (already in `cluster.env.example`, leave them): image `ghcr.io/tonyd2wild/vllm-glm53-flash:sm121-v11-dflash2`,
 the SM121 top-k patch mount (in `docker-compose.yml`), `--block-size 2304` (the page size the fp8 paged MQA
-needs — without it output corrupts with no error), `--language-model-only` (skips the vision front-end, saves
-15.7 GiB), `--moe-backend marlin`, `--gpu-memory-utilization 0.85`, `--kv-cache-dtype fp8_e4m3`, `--enforce-eager`,
+needs — without it output corrupts with no error), `--language-model-only` (text only by default; images are one knob
+away, see [Images](#images) — the vision tower itself is 1.05 GiB), `--moe-backend marlin`, `--gpu-memory-utilization 0.85`, `--kv-cache-dtype fp8_e4m3`, `--enforce-eager`,
 `--tool-call-parser glm47` (`glm` silently drops tool calls), `--reasoning-parser deepseek_r1`. Context length does
 not move speed (262K vs 65K: same tok/s), so there is no reason to shrink it. The KV pool is not pinned — the
 profiler sizes it (7.48 GiB = 1,151,844 tokens = 4.4 full-262K streams on this checkpoint). The default uses the
@@ -130,6 +130,28 @@ vllm serve /models/GLM-5.3-Flash-NVFP4 --served-model-name glm-5.3-flash-nvfp4 -
 ```
 
 Rank 1 adds `--headless`; NCCL / UCX / OMPI interface variables are in `docker-compose.yml`.
+
+## Images
+
+GLM-5.3-Flash ships a vision tower and the RedHat checkpoint keeps it: 1.05 GiB BF16 per rank, left unquantized
+by the recipe, and its `chat_template.jinja` already emits `<|begin_of_image|><|image|><|end_of_image|>`. The
+default is text only because that is what every number here was measured with. To accept images:
+
+```bash
+OV="LANGUAGE_MODEL_ONLY=0 MAX_MODEL_LEN=131072"
+OVERRIDES="$OV" scripts/start-worker.sh && sleep 25 && OVERRIDES="$OV" scripts/start-head.sh && scripts/health.sh
+```
+
+`LANGUAGE_MODEL_ONLY=0` drops `--language-model-only` and appends `VISION_ARGS` from `cluster.env`
+(`--limit-mm-per-prompt {"image":4} --mm-processor-kwargs {"max_image_tokens":2048}`: up to 4 images per prompt,
+≈1.6 MP each before the processor shrinks them). The "15.7 GiB" that circulated for this image is not the tower;
+it is warmup profiling with the unbounded default of 8,000 tokens per image. Bounded like this the multimodal
+profile costs about 1 GiB of KV pool. Measured 2026-09-02 on the 8-slot MTP k=4 profile: boot 621 s, KV pool
+3.31 GiB at 131K (262K needs 2.23 GiB, so 262K fits too), ViT attention auto-selects FLASH_ATTN, and three
+vision probes from the author's bench kit (bar-chart values, Japanese OCR, PPE enumeration with a hallucination
+watch) score chart 4/4, OCR CER 0.0, PPE fail — the same 2/3 as the single-Spark GGUF run — at 2.5 s / 4.4 s per
+image (single Spark: 7.8 / 13.5). Send images as OpenAI `image_url` parts (data URL or http). Video is on at
+vLLM's default limit of 1 but unmeasured. Details in `docs/measurements.md` §5.
 
 ## Layout
 
